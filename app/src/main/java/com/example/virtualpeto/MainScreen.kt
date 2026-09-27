@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -75,6 +78,8 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import java.io.File
+import java.io.FileInputStream
+import java.io.ObjectInputStream
 
 val DarkBackground = Color(0xFF1E1E24)
 val SurfaceColor = Color(0xFF2B2B36)
@@ -144,6 +149,16 @@ fun getFileNameFromUri(context: Context, uri: Uri): String {
     return result ?: "unknown_file"
 }
 
+fun loadSmartPet(file: File): PetMetadata? {
+    if (!file.exists()) return null
+    return try {
+        ObjectInputStream(FileInputStream(file)).use { it.readObject() as PetMetadata }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -170,6 +185,7 @@ fun MainScreen(
     var items by remember { mutableStateOf<List<LibraryItem>>(emptyList()) }
     var selectedFile by remember { mutableStateOf<LibraryItem?>(null) }
     var activePets by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showCreatorScreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         items = libraryManager.loadFiles()
@@ -194,159 +210,258 @@ fun MainScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            if (selectedTab == 0) {
-                TopAppBar(
-                    title = { Text("General Library", color = TextColor) },
-                    actions = {
-                        IconButton(onClick = {
-                            filePickerLauncher.launch(
-                                arrayOf(
-                                    "image/png",
-                                    "image/jpeg",
-                                    "image/gif",
-                                    "image/webp",
-                                    "audio/mpeg"
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                if (selectedTab == 0) {
+                    TopAppBar(
+                        title = { Text("General Library", color = TextColor) },
+                        actions = {
+                            IconButton(onClick = {
+                                filePickerLauncher.launch(
+                                    arrayOf(
+                                        "image/png",
+                                        "image/jpeg",
+                                        "image/gif",
+                                        "image/webp",
+                                        "audio/mpeg"
+                                    )
                                 )
-                            )
-                        }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = TextColor)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceColor)
-                )
-            } else if (selectedTab == 4) {
-                TopAppBar(
-                    title = { Text("Settings", color = TextColor) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceColor)
-                )
-            }
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = SurfaceColor,
-                contentColor = TextColor
-            ) {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Filled.Folder, contentDescription = null) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentColor,
-                        unselectedIconColor = Color.Gray,
-                        indicatorColor = Color.Transparent
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentColor,
-                        unselectedIconColor = Color.Gray,
-                        indicatorColor = Color.Transparent
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentColor,
-                        unselectedIconColor = Color.Gray,
-                        indicatorColor = Color.Transparent
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Filled.Build, contentDescription = null) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentColor,
-                        unselectedIconColor = Color.Gray,
-                        indicatorColor = Color.Transparent
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentColor,
-                        unselectedIconColor = Color.Gray,
-                        indicatorColor = Color.Transparent
-                    )
-                )
-            }
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(DarkBackground)
-                .padding(paddingValues)
-        ) {
-            if (selectedTab == 0) {
-                LibraryGrid(
-                    items = items,
-                    imageLoader = imageLoader,
-                    onItemClick = { clickedItem ->
-                        selectedFile = clickedItem
-                    }
-                )
-            } else if (selectedTab == 4) {
-                SettingsScreen()
-            }
-
-            if (selectedFile != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .clickable { selectedFile = null }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = selectedFile != null,
-                enter = slideInHorizontally(
-                    initialOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> fullWidth },
-                    animationSpec = tween(300)
-                ),
-                modifier = Modifier.align(Alignment.CenterEnd)
-            ) {
-                selectedFile?.let { item ->
-                    val isActive = activePets.contains(item.name)
-                    SidePanelContent(
-                        item = item,
-                        imageLoader = imageLoader,
-                        isActive = isActive,
-                        onClose = { selectedFile = null },
-                        onLaunch = {
-                            activePets = activePets + item.name
-                            onSpawnClick(item)
-                            selectedFile = null
-                        },
-                        onClosePet = {
-                            activePets = activePets - item.name
-                            onClosePetClick(item)
-                            selectedFile = null
-                        },
-                        onDelete = {
-                            if (libraryManager.deleteFile(item.name)) {
-                                items = items.filter { it.name != item.name }
+                            }) {
+                                Icon(Icons.Filled.Add, contentDescription = null, tint = TextColor)
                             }
-                            activePets = activePets - item.name
-                            onClosePetClick(item)
-                            selectedFile = null
-                        }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceColor)
+                    )
+                } else if (selectedTab == 4) {
+                    TopAppBar(
+                        title = { Text("Settings", color = TextColor) },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceColor)
                     )
                 }
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = SurfaceColor,
+                    contentColor = TextColor
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = { Icon(Icons.Filled.Folder, contentDescription = null) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = AccentColor,
+                            unselectedIconColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = AccentColor,
+                            unselectedIconColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = AccentColor,
+                            unselectedIconColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        icon = { Icon(Icons.Filled.Build, contentDescription = null) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = AccentColor,
+                            unselectedIconColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = AccentColor,
+                            unselectedIconColor = Color.Gray,
+                            indicatorColor = Color.Transparent
+                        )
+                    )
+                }
+            }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(DarkBackground)
+                    .padding(paddingValues)
+            ) {
+                if (selectedTab == 0) {
+                    LibraryGrid(
+                        items = items,
+                        imageLoader = imageLoader,
+                        onItemClick = { clickedItem ->
+                            selectedFile = clickedItem
+                        }
+                    )
+                } else if (selectedTab == 1) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            onClick = { showCreatorScreen = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .fillMaxWidth(0.8f)
+                                .height(50.dp)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Smart Pet Creator", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else if (selectedTab == 2) {
+                    var petFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+
+                    LaunchedEffect(selectedTab, showCreatorScreen) {
+                        val petsDir = File(context.filesDir, "pets")
+                        petFiles = petsDir.listFiles { _, name -> name.endsWith(".vpet") }?.toList() ?: emptyList()
+                    }
+
+                    if (petFiles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No pets created yet.", color = Color.Gray)
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            contentPadding = PaddingValues(16.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(petFiles) { file ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(SurfaceColor)
+                                        .clickable {
+                                            val petData = loadSmartPet(file)
+                                            if (petData != null) {
+                                                try {
+                                                    val serviceClass = Class.forName("com.example.virtualpeto.PetService")
+                                                    val serviceIntent = Intent(context, serviceClass).apply {
+                                                        putExtra("CUSTOM_PET_DATA", petData)
+                                                        action = "ACTION_START_CUSTOM_PET"
+                                                    }
+                                                    context.startService(serviceIntent)
+                                                    Toast.makeText(context, "Launching ${petData.petName}...", Toast.LENGTH_SHORT).show()
+                                                } catch (e: ClassNotFoundException) {
+                                                    Toast.makeText(context, "Create your VirtualPetService", Toast.LENGTH_LONG).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Error loading the pet", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        .padding(16.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Person,
+                                        contentDescription = "Pet",
+                                        tint = AccentColor,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = file.nameWithoutExtension,
+                                        color = TextColor,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else if (selectedTab == 4) {
+                    SettingsScreen()
+                }
+
+                if (selectedFile != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.6f))
+                            .clickable { selectedFile = null }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = selectedFile != null,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = tween(300)
+                    ),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> fullWidth },
+                        animationSpec = tween(300)
+                    ),
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    selectedFile?.let { item ->
+                        val isActive = activePets.contains(item.name)
+                        SidePanelContent(
+                            item = item,
+                            imageLoader = imageLoader,
+                            isActive = isActive,
+                            onClose = { selectedFile = null },
+                            onLaunch = {
+                                activePets = activePets + item.name
+                                onSpawnClick(item)
+                                selectedFile = null
+                            },
+                            onClosePet = {
+                                activePets = activePets - item.name
+                                onClosePetClick(item)
+                                selectedFile = null
+                            },
+                            onDelete = {
+                                if (libraryManager.deleteFile(item.name)) {
+                                    items = items.filter { it.name != item.name }
+                                }
+                                activePets = activePets - item.name
+                                onClosePetClick(item)
+                                selectedFile = null
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showCreatorScreen) {
+            BackHandler {
+                showCreatorScreen = false
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(DarkBackground)
+                    .pointerInput(Unit) {}
+            ) {
+                PetCreatorScreen(onClose = { showCreatorScreen = false })
             }
         }
     }
